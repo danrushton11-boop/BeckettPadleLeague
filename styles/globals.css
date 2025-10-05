@@ -1,6 +1,5 @@
 
 @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@500;700&display=swap');
-
 body {
   font-family: 'Poppins', sans-serif;
   background: linear-gradient(135deg, #007cf0, #00dfd8, #ffa500);
@@ -9,47 +8,13 @@ body {
   color: #fff;
   text-align: center;
 }
-.container {
-  max-width: 650px;
-  margin: 0 auto;
-  padding: 20px;
-}
-.card {
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 20px;
-  box-shadow: 0 4px 10px rgba(0,0,0,0.2);
-  padding: 20px;
-  margin-bottom: 20px;
-}
-button {
-  background: #ffce00;
-  border: none;
-  padding: 12px 20px;
-  border-radius: 12px;
-  margin: 8px;
-  color: #333;
-  font-weight: bold;
-  font-size: 1rem;
-  cursor: pointer;
-  transition: all 0.2s ease-in-out;
-}
-button:hover {
-  background: #ffe066;
-}
-input, select {
-  border-radius: 10px;
-  padding: 10px;
-  border: none;
-  margin-top: 10px;
-  width: 100%;
-  font-size: 1rem;
-}
-h1 {
-  font-size: 2rem;
-  margin-bottom: 10px;
-}
-footer {
-  font-size: 0.8rem;
-  opacity: 0.8;
-  margin-top: 30px;
-}
+.container { max-width: 650px; margin: 0 auto; padding: 20px; }
+.card { background: rgba(255, 255, 255, 0.1); border-radius: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.2); padding: 20px; margin-bottom: 20px; text-align:left; color:#fff; }
+button { background: #ffce00; border: none; padding: 12px 20px; border-radius: 12px; margin: 8px; color: #333; font-weight: bold; font-size: 1rem; cursor: pointer; transition: all 0.2s ease-in-out; }
+button:hover { background: #ffe066; }
+input, select { border-radius: 10px; padding: 10px; border: none; margin-top: 10px; width: 100%; font-size: 1rem; }
+h1 { font-size: 2rem; margin-bottom: 10px; }
+h2 { margin-bottom:10px; }
+ul { padding-left: 0; list-style:none; }
+li { margin-bottom:4px; }
+footer { font-size: 0.8rem; opacity: 0.8; margin-top: 30px; text-align:center; }
