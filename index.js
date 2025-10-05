@@ -12,12 +12,23 @@ import {
 } from "firebase/firestore";
 
 const initialTeams = [
-  { id: 1, name: 'Dan & Bean', players: ['Dan', 'Bean'], points: 0 },
-  { id: 2, name: 'Weedy & TJ', players: ['Weedy', 'TJ'], points: 0 },
-  { id: 3, name: 'Rob & Pear', players: ['Rob', 'Pear'], points: 0 },
-  { id: 4, name: 'Nova & Neil', players: ['Nova', 'Neil'], points: 0 },
-  { id: 5, name: 'Bulby & JHD', players: ['Bulby', 'JHD'], points: 0 },
+  { id: 1, name: 'Dan & Bean', players: ['Dan', 'Bean'] },
+  { id: 2, name: 'Weedy & TJ', players: ['Weedy', 'TJ'] },
+  { id: 3, name: 'Rob & Pear', players: ['Rob', 'Pear'] },
+  { id: 4, name: 'Nova & Neil', players: ['Nova', 'Neil'] },
+  { id: 5, name: 'Bulby & JHD', players: ['Bulby', 'JHD'] },
 ];
+
+// Generate fixtures (all unique pairings)
+const generateFixtures = (teams) => {
+  const fixtures = [];
+  for (let i = 0; i < teams.length; i++) {
+    for (let j = i + 1; j < teams.length; j++) {
+      fixtures.push({ team1: teams[i].name, team2: teams[j].name, played: false, score: "", winner: "" });
+    }
+  }
+  return fixtures;
+};
 
 export default function Home() {
   const [teams, setTeams] = useState([]);
@@ -26,28 +37,33 @@ export default function Home() {
   const [adminMode, setAdminMode] = useState(false);
   const [passwordInput, setPasswordInput] = useState("");
 
-  // New state for inputs
-  const [selectedTeam1, setSelectedTeam1] = useState("");
-  const [selectedTeam2, setSelectedTeam2] = useState("");
+  const [selectedMatch, setSelectedMatch] = useState(null);
   const [scoreInput, setScoreInput] = useState("");
   const [winnerInput, setWinnerInput] = useState("");
-  const [playerRatingsInput, setPlayerRatingsInput] = useState({}); // {playerName: rating}
+  const [playerRatingsInput, setPlayerRatingsInput] = useState({});
 
-  // Load teams/matches/ratings from Firebase
   useEffect(() => {
     const loadData = async () => {
+      // Load teams
       const teamsSnapshot = await getDocs(collection(db, "teams"));
       if (teamsSnapshot.empty) {
         for (let t of initialTeams) {
-          await addDoc(collection(db, "teams"), t);
+          await addDoc(collection(db, "teams"), { ...t, points: 0 });
         }
       }
       const teamData = await getDocs(collection(db, "teams"));
       setTeams(teamData.docs.map(d => ({ id: d.id, ...d.data() })));
 
-      const matchData = await getDocs(query(collection(db, "matches"), orderBy("date", "asc")));
-      setMatches(matchData.docs.map(d => ({ id: matchData.id, ...matchData.data() })));
+      // Load matches
+      const matchData = await getDocs(query(collection(db, "matches"), orderBy("team1")));
+      if (matchData.empty) {
+        const fixtures = generateFixtures(initialTeams);
+        for (let f of fixtures) await addDoc(collection(db, "matches"), f);
+      }
+      const matchDocs = await getDocs(collection(db, "matches"));
+      setMatches(matchDocs.docs.map(d => ({ id: d.id, ...d.data() })));
 
+      // Load ratings
       const ratingData = await getDocs(collection(db, "ratings"));
       setRatings(ratingData.docs.map(d => ({ id: d.id, ...d.data() })));
     };
@@ -55,53 +71,63 @@ export default function Home() {
   }, []);
 
   const handleAdminLogin = () => {
-    if (passwordInput === "danisgreat") {
-      setAdminMode(true);
-    } else {
-      alert("Incorrect password");
-    }
+    if (passwordInput === "danisgreat") setAdminMode(true);
+    else alert("Incorrect password");
   };
 
-  // Add match + ratings
-  const handleAddMatch = async () => {
-    if (!adminMode || !selectedTeam1 || !selectedTeam2 || !scoreInput || !winnerInput) {
-      alert("Please fill all match fields");
+  const handleSelectMatch = (match) => {
+    setSelectedMatch(match);
+    setScoreInput(match.score || "");
+    setWinnerInput(match.winner || "");
+    const pr = {};
+    teams.flatMap(t => t.players).forEach(p => pr[p] = "");
+    setPlayerRatingsInput(pr);
+  };
+
+  const handleAddResult = async () => {
+    if (!selectedMatch || !scoreInput || !winnerInput) {
+      alert("Fill score and winner");
       return;
     }
+    // Update match
+    const matchDoc = doc(db, "matches", selectedMatch.id);
+    await updateDoc(matchDoc, { score: scoreInput, winner: winnerInput, played: true });
 
-    const newMatch = { team1: selectedTeam1, team2: selectedTeam2, score: scoreInput, winner: winnerInput, date: new Date() };
-    const docRef = await addDoc(collection(db, "matches"), newMatch);
-    setMatches([...matches, { id: docRef.id, ...newMatch }]);
-
-    // Update points
+    // Update team points
     const winnerTeam = teams.find(t => t.name === winnerInput);
     if (winnerTeam) {
-      await updateDoc(doc(db, "teams", winnerTeam.id), { points: winnerTeam.points + 3 });
+      const teamDoc = doc(db, "teams", winnerTeam.id);
+      await updateDoc(teamDoc, { points: winnerTeam.points + 3 });
       setTeams(teams.map(t => t.id === winnerTeam.id ? { ...t, points: t.points + 3 } : t));
     }
 
-    // Save player ratings
+    // Save ratings
     for (let player in playerRatingsInput) {
       if (playerRatingsInput[player]) {
-        await addDoc(collection(db, "ratings"), { player, raterTeam: `${selectedTeam1} & ${selectedTeam2}`, rating: Number(playerRatingsInput[player]) });
+        await addDoc(collection(db, "ratings"), { player, raterTeam: `${selectedMatch.team1} & ${selectedMatch.team2}`, rating: Number(playerRatingsInput[player]) });
       }
     }
 
-    // Clear inputs
-    setSelectedTeam1(""); setSelectedTeam2(""); setScoreInput(""); setWinnerInput(""); setPlayerRatingsInput({});
+    // Refresh matches
+    const matchDocs = await getDocs(collection(db, "matches"));
+    setMatches(matchDocs.docs.map(d => ({ id: d.id, ...d.data() })));
+
+    setSelectedMatch(null);
+    setScoreInput(""); setWinnerInput(""); setPlayerRatingsInput({});
   };
 
   const clearLastMatch = async () => {
     if (!adminMode || matches.length === 0) return;
-    const last = matches[matches.length - 1];
-    await deleteDoc(doc(db, "matches", last.id));
-    setMatches(matches.slice(0, -1));
+    const last = matches.filter(m => m.played).slice(-1)[0];
+    if (!last) return;
+    await updateDoc(doc(db, "matches", last.id), { score: "", winner: "", played: false });
+    setMatches(matches.map(m => m.id === last.id ? { ...m, score: "", winner: "", played: false } : m));
   };
 
   const resetAllData = async () => {
     if (!adminMode) return;
-    for (let m of matches) await deleteDoc(doc(db, "matches", m.id));
-    setMatches([]);
+    for (let m of matches) await updateDoc(doc(db, "matches", m.id), { score: "", winner: "", played: false });
+    setMatches(matches.map(m => ({ ...m, score: "", winner: "", played: false })));
     for (let r of ratings) await deleteDoc(doc(db, "ratings", r.id));
     setRatings([]);
     for (let t of teams) {
@@ -123,13 +149,8 @@ export default function Home() {
 
       {!adminMode && (
         <div style={{ textAlign: "center", marginBottom: 20 }}>
-          <input
-            type="password"
-            placeholder="Admin password"
-            value={passwordInput}
-            onChange={e => setPasswordInput(e.target.value)}
-            style={{ padding: 8, fontSize: 16 }}
-          />
+          <input type="password" placeholder="Admin password" value={passwordInput} onChange={e => setPasswordInput(e.target.value)}
+            style={{ padding: 8, fontSize: 16 }} />
           <button onClick={handleAdminLogin} style={{ padding: 8, marginLeft: 10, fontSize: 16, backgroundColor: "#0077cc", color: "white", border: "none", borderRadius: 6 }}>
             Login
           </button>
@@ -138,35 +159,26 @@ export default function Home() {
 
       {adminMode && (
         <div style={{ marginBottom: 30, padding: 10, border: "1px solid #0077cc", borderRadius: 10 }}>
-          <h2>Add Match</h2>
-          <select value={selectedTeam1} onChange={e => setSelectedTeam1(e.target.value)} style={{ marginRight: 10 }}>
-            <option value="">Select Team 1</option>
-            {teams.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
+          <h2>Admin: Enter Match Result</h2>
+          <select value={selectedMatch?.id || ""} onChange={e => handleSelectMatch(matches.find(m => m.id === e.target.value))} style={{ marginRight: 10 }}>
+            <option value="">Select Match</option>
+            {matches.map(m => <option key={m.id} value={m.id}>{m.team1} vs {m.team2}</option>)}
           </select>
-          <select value={selectedTeam2} onChange={e => setSelectedTeam2(e.target.value)} style={{ marginRight: 10 }}>
-            <option value="">Select Team 2</option>
-            {teams.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
-          </select>
-          <input type="text" placeholder="Score e.g. 6-3,6-2" value={scoreInput} onChange={e => setScoreInput(e.target.value)} style={{ marginRight: 10 }} />
-          <input type="text" placeholder="Winner Team" value={winnerInput} onChange={e => setWinnerInput(e.target.value)} style={{ marginRight: 10 }} />
 
-          <div style={{ marginTop: 10 }}>
-            <h4>Rate Players (1-5)</h4>
-            {teams.flatMap(t => t.players).map(player => (
-              <div key={player} style={{ marginBottom: 5 }}>
-                <label>{player}: </label>
-                <input
-                  type="number"
-                  min="1"
-                  max="5"
-                  value={playerRatingsInput[player] || ""}
-                  onChange={e => setPlayerRatingsInput({ ...playerRatingsInput, [player]: e.target.value })}
-                  style={{ width: 50 }}
-                />
-              </div>
-            ))}
-          </div>
-          <button onClick={handleAddMatch} style={{ marginTop: 10, padding: 10, backgroundColor: "#0077cc", color: "white", border: "none", borderRadius: 6 }}>Add Match & Ratings</button>
+          {selectedMatch && (
+            <div style={{ marginTop: 10 }}>
+              <input type="text" placeholder="Score e.g. 6-3,6-2" value={scoreInput} onChange={e => setScoreInput(e.target.value)} style={{ marginRight: 10 }} />
+              <input type="text" placeholder="Winner Team" value={winnerInput} onChange={e => setWinnerInput(e.target.value)} style={{ marginRight: 10 }} />
+              <h4>Rate Players (1-5)</h4>
+              {teams.flatMap(t => t.players).map(player => (
+                <div key={player} style={{ marginBottom: 5 }}>
+                  <label>{player}: </label>
+                  <input type="number" min="1" max="5" value={playerRatingsInput[player] || ""} onChange={e => setPlayerRatingsInput({ ...playerRatingsInput, [player]: e.target.value })} style={{ width: 50 }} />
+                </div>
+              ))}
+              <button onClick={handleAddResult} style={{ marginTop: 10, padding: 10, backgroundColor: "#0077cc", color: "white", border: "none", borderRadius: 6 }}>Save Result & Ratings</button>
+            </div>
+          )}
         </div>
       )}
 
@@ -188,7 +200,7 @@ export default function Home() {
         </tbody>
       </table>
 
-      <h2>Matches</h2>
+      <h2>Fixtures</h2>
       <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 20 }}>
         <thead>
           <tr style={{ backgroundColor: "#ffaa00", color: "white" }}>
@@ -203,8 +215,8 @@ export default function Home() {
             <tr key={m.id} style={{ borderBottom: "1px solid #ccc" }}>
               <td>{m.team1}</td>
               <td>{m.team2}</td>
-              <td>{m.score}</td>
-              <td>{m.winner}</td>
+              <td>{m.score || "—"}</td>
+              <td>{m.winner || "—"}</td>
             </tr>
           ))}
         </tbody>
